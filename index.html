@@ -899,7 +899,6 @@ async function renderAccueil() {
 async function renderPlanning() {
   try {
     planning = await api('pc_planning', 'GET', null, '?order=date_arrivee');
-    const canAdd = ['Admin','Propriétaire'].includes(currentUser.role);
     renderCalendar();
   } catch(e) {
     document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur</div></div>';
@@ -945,12 +944,12 @@ function renderCalendar() {
       <div class="cal-grid">${daysHtml}</div>
     </div>
 
-    ${canAdd ? `<button class="btn btn-primary btn-full" onclick="openModalResa()">+ Nouvelle réservation</button>` : ''}
+    ${['Admin','Propriétaire'].includes(currentUser.role) ? `<button class="btn btn-primary btn-full" onclick="openModalResa()">+ Nouvelle réservation</button>` : ''}
 
     <div class="section-title" style="margin-top:16px">Réservations</div>
     ${resas.length > 0 ? `<div class="card">
       ${resas.map(r => {
-        const canEdit = currentUser.role === 'Admin' || currentUser.prenom === r.prenom || (currentUser.famille === r.famille && ['Propriétaire'].includes(currentUser.role));
+        const canEdit = currentUser.role === 'Admin' || currentUser.prenom === r.prenom || (currentUser.famille === r.famille && ['Propriétaire','Conjoint'].includes(currentUser.role));
         return `<div class="resa-item">
           <div class="resa-avatar">${r.prenom[0]}</div>
           <div class="resa-info">
@@ -1054,6 +1053,8 @@ async function openModalResa(resa=null) {
 
   // Sélecteur responsable visible uniquement pour Admin
   const isAdmin = currentUser.role === 'Admin';
+  // Vérifier droits
+  if (!['Admin','Propriétaire'].includes(currentUser.role)) { closeModal('modal-resa'); return; }
   const responsables = membres.filter(m => m.role !== 'Locataire');
 
   document.getElementById('modal-resa-body').innerHTML = `
@@ -1278,6 +1279,8 @@ async function renderRepas() {
           const soir = repasPersonne ? repasPersonne.soir !== false : true;
           const isMe = p.prenom === currentUser.prenom;
           const isAdmin = currentUser.role === 'Admin';
+  // Vérifier droits
+  if (!['Admin','Propriétaire'].includes(currentUser.role)) { closeModal('modal-resa'); return; }
           const canToggle = isMe || isAdmin;
           return `<div class="repas-toggle">
             <div>
