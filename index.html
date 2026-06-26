@@ -949,7 +949,7 @@ function renderCalendar() {
             ${r.commentaire ? `<div class="resa-dates" style="color:var(--orange)">${r.commentaire}</div>` : ''}
           </div>
           ${canEdit ? `<div class="resa-actions">
-            <button class="btn btn-primary btn-sm" onclick="openModalResa(${JSON.stringify(r)})">✏️</button>
+            <button class="btn btn-primary btn-sm" onclick="editResa('${r.id}')">✏️</button>
             <button class="btn btn-danger btn-sm" onclick="deleteResa('${r.id}')">🗑</button>
           </div>` : ''}
         </div>`;
@@ -969,6 +969,11 @@ function showDayDetail(dateStr) {
   const resas = planning.filter(r => r.date_arrivee <= dateStr && r.date_depart >= dateStr);
   if (resas.length === 0) return;
   alert(resas.map(r => `${r.prenom} (${r.famille}) - ${r.nombre_personnes||'?'} pers.`).join('\n'));
+}
+
+function editResa(id) {
+  const resa = planning.find(r => r.id === id);
+  if (resa) openModalResa(resa);
 }
 
 function openModalResa(resa=null) {
