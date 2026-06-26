@@ -737,22 +737,22 @@ let membres = [];
 
 async function api(table, method='GET', body=null, filter='', returnData=true) {
   const url = `${SUPABASE_URL}/rest/v1/${table}${filter}`;
-  const prefer = method === 'POST' && returnData ? 'return=representation' : method === 'PATCH' ? 'return=minimal' : '';
-  const opts = {
-    method,
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      'X-Client-Info': 'petit-cosquet/1.0',
-      ...(prefer ? {'Prefer': prefer} : {})
-    },
-    mode: 'cors',
-    credentials: 'omit'
+  const prefer = method === 'POST' && returnData ? 'return=representation' : '';
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json'
   };
+  if (prefer) headers['Prefer'] = prefer;
+  
+  const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
+  
   const r = await fetch(url, opts);
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const errText = await r.text();
+    throw new Error(errText);
+  }
   if (method === 'DELETE' || method === 'PATCH' || !returnData) return null;
   const text = await r.text();
   return text ? JSON.parse(text) : null;
