@@ -720,6 +720,8 @@
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+
 const SUPABASE_URL = 'https://jbiphusmneoccarwkucq.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiaXBodXNtbmVvY2NhcndrdWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MTI3ODIsImV4cCI6MjA4OTI4ODc4Mn0.meNA4EocaV5J8_9RL929w3fUOwFI5exFHnXr2nKRHjM';
 const MAISON_IMG = document.getElementById('maison-img-data').src;
@@ -1621,6 +1623,9 @@ window.addEventListener('DOMContentLoaded', () => {
   const h = document.getElementById('hero-login');
   if (h) h.src = MAISON_IMG;
 });
+
+
+}); // fin DOMContentLoaded
 </script>
 </body>
 </html>
