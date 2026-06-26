@@ -830,6 +830,7 @@ async function renderAccueil() {
     const today = new Date().toISOString().split('T')[0];
     const presentsAujourdhui = planning.filter(r => r.date_arrivee <= today && r.date_depart >= today);
     const prochainesResas = planning.filter(r => r.date_arrivee > today).slice(0, 3);
+    const nbPersonnesPresentes = presentsAujourdhui.reduce((s,r) => s + (parseInt(r.nombre_personnes)||1), 0);
 
     document.getElementById('content').innerHTML = `
       <div class="accueil-hero">
@@ -844,17 +845,22 @@ async function renderAccueil() {
 
       <div class="stats-row">
         <div class="stat-card">
-          <div class="stat-num">${presentsAujourdhui.length}</div>
+          <div class="stat-num">${nbPersonnesPresentes}</div>
           <div class="stat-label">Présents</div>
         </div>
         <div class="stat-card">
-          <div class="stat-num">${planning.filter(r=>r.date_arrivee >= today).length}</div>
-          <div class="stat-label">À venir</div>
+          <div class="stat-num">${planning.filter(r=>r.date_arrivee > today).length}</div>
+          <div class="stat-label">Séjours à venir</div>
         </div>
         <div class="stat-card">
-          <div class="stat-num">${membres.length}</div>
+          <div class="stat-num">${membres.filter(m=>m.role!=='Locataire').length}</div>
           <div class="stat-label">Membres</div>
         </div>
+      </div>
+
+      <div class="section-title">🌤️ Météo & Marées</div>
+      <div id="meteo-container">
+        <div class="loading"><div class="spinner"></div>Chargement météo...</div>
       </div>
 
       ${presentsAujourdhui.length > 0 ? `
@@ -1195,23 +1201,40 @@ async function deleteResa(id) {
 // ── REPAS ──
 async function renderRepas() {
   try {
+    if (!planning.length) planning = await api('pc_planning','GET',null,'?order=date_arrivee');
     const today = new Date().toISOString().split('T')[0];
-    // Vérifier chevauchements
-    const presentsParJour = {};
-    planning.forEach(r => {
-      let d = new Date(r.date_arrivee);
-      const fin = new Date(r.date_depart);
+
+    // Récupérer tous les participants
+    const allParticipants = await api('pc_participants','GET',null,'?order=prenom');
+
+    // Construire la liste des personnes présentes par jour
+    const presencesParJour = {};
+    for (const r of planning) {
+      const parts = allParticipants.filter(p => p.planning_id === r.id);
+      const personnes = parts.length > 0 
+        ? parts.map(p => ({prenom: p.prenom, famille: r.famille, type: p.type}))
+        : [{prenom: r.prenom, famille: r.famille, type: 'membre'}];
+
+      let d = new Date(r.date_arrivee + 'T00:00:00');
+      const fin = new Date(r.date_depart + 'T00:00:00');
       while (d <= fin) {
         const ds = d.toISOString().split('T')[0];
-        if (!presentsParJour[ds]) presentsParJour[ds] = [];
-        presentsParJour[ds].push(r.famille);
+        if (!presencesParJour[ds]) presencesParJour[ds] = [];
+        personnes.forEach(p => {
+          if (!presencesParJour[ds].find(x => x.prenom === p.prenom)) {
+            presencesParJour[ds].push(p);
+          }
+        });
         d.setDate(d.getDate()+1);
       }
-    });
+    }
 
-    // Jours avec plusieurs familles
-    const joursConcernes = Object.entries(presentsParJour)
-      .filter(([d,fams]) => new Set(fams).size > 1 && d >= today)
+    // Jours avec plusieurs familles différentes
+    const joursConcernes = Object.entries(presencesParJour)
+      .filter(([ds, personnes]) => {
+        const familles = new Set(personnes.map(p => p.famille));
+        return familles.size > 1 && ds >= today;
+      })
       .sort(([a],[b]) => a.localeCompare(b))
       .slice(0, 14);
 
@@ -1219,48 +1242,60 @@ async function renderRepas() {
       document.getElementById('content').innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🍽️</div>
-          <div class="empty-text">Aucun repas partagé prévu<br><small>L'onglet repas est actif uniquement quand plusieurs familles sont présentes en même temps</small></div>
+          <div class="empty-text">Aucun repas partagé prévu<br><small>Actif uniquement quand plusieurs familles sont présentes en même temps</small></div>
         </div>`;
       return;
     }
 
-    const repas = await api('pc_repas', 'GET', null, '?order=date,prenom');
-
+    const repas = await api('pc_repas','GET',null,'?order=date,prenom');
     let html = '<div class="section-title">Repas partagés à venir</div>';
 
-    for (const [dateStr, familles] of joursConcernes) {
-      const resas = planning.filter(r => r.date_arrivee <= dateStr && r.date_depart >= dateStr);
+    for (const [dateStr, personnes] of joursConcernes) {
       const repasJour = repas.filter(r => r.date === dateStr);
-      const totalMidi = repasJour.filter(r=>r.midi).length;
-      const totalSoir = repasJour.filter(r=>r.soir).length;
+      const totalMidi = personnes.filter(p => {
+        const rp = repasJour.find(r => r.prenom === p.prenom);
+        return rp ? rp.midi !== false : true;
+      }).length;
+      const totalSoir = personnes.filter(p => {
+        const rp = repasJour.find(r => r.prenom === p.prenom);
+        return rp ? rp.soir !== false : true;
+      }).length;
+
+      const familles = new Set(personnes.map(p => p.famille));
 
       html += `<div class="card">
         <div class="card-header">
           <div>
             <div class="card-title">${formatDate(dateStr)}</div>
-            <div class="card-subtitle">${new Set(familles).size} familles présentes</div>
+            <div class="card-subtitle">${familles.size} familles · ${personnes.length} personnes</div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:11px;color:var(--gris-mid)">🌞 ${totalMidi} · 🌙 ${totalSoir}</div>
+          <div style="text-align:right;font-size:13px">
+            <div>🌞 <strong>${totalMidi}</strong></div>
+            <div>🌙 <strong>${totalSoir}</strong></div>
           </div>
         </div>
-        ${resas.map(r => {
-          const repasPersonne = repasJour.find(rp => rp.prenom === r.prenom);
-          const midi = repasPersonne?.midi !== false;
-          const soir = repasPersonne?.soir !== false;
-          const isMe = r.prenom === currentUser.prenom;
+        ${personnes.map(p => {
+          const repasPersonne = repasJour.find(rp => rp.prenom === p.prenom);
+          const midi = repasPersonne ? repasPersonne.midi !== false : true;
+          const soir = repasPersonne ? repasPersonne.soir !== false : true;
+          const isMe = p.prenom === currentUser.prenom;
+          const isAdmin = currentUser.role === 'Admin';
+          const canToggle = isMe || isAdmin;
           return `<div class="repas-toggle">
             <div>
-              <div class="toggle-label">${r.prenom} <span style="font-size:11px;color:var(--gris-mid)">${r.famille}</span></div>
+              <div class="toggle-label">${p.prenom} 
+                <span style="font-size:11px;color:var(--gris-mid)">${p.famille}</span>
+                ${p.type==='invite'?'<span style="font-size:10px;background:var(--orange);color:white;padding:1px 5px;border-radius:8px;margin-left:4px">invité</span>':''}
+              </div>
             </div>
             <div style="display:flex;gap:12px;align-items:center">
               <div style="text-align:center">
                 <div style="font-size:10px;color:var(--gris-mid)">Midi</div>
-                <button class="toggle ${midi?'on':''}" ${!isMe?'disabled':''} onclick="toggleRepas('${dateStr}','${r.prenom}','midi',${midi})"></button>
+                <button class="toggle ${midi?'on':''}" ${!canToggle?'disabled':''} onclick="toggleRepas('${dateStr}','${p.prenom}','midi',${midi})"></button>
               </div>
               <div style="text-align:center">
                 <div style="font-size:10px;color:var(--gris-mid)">Soir</div>
-                <button class="toggle ${soir?'on':''}" ${!isMe?'disabled':''} onclick="toggleRepas('${dateStr}','${r.prenom}','soir',${soir})"></button>
+                <button class="toggle ${soir?'on':''}" ${!canToggle?'disabled':''} onclick="toggleRepas('${dateStr}','${p.prenom}','soir',${soir})"></button>
               </div>
             </div>
           </div>`;
@@ -1270,6 +1305,7 @@ async function renderRepas() {
 
     document.getElementById('content').innerHTML = html;
   } catch(e) {
+    console.error(e);
     document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur</div></div>';
   }
 }
