@@ -1025,7 +1025,7 @@ async function openModalResa(resa=null) {
 
   // Sélecteur responsable visible uniquement pour Admin
   const isAdmin = currentUser.role === 'Admin';
-  const responsables = membres.filter(m => ['Propriétaire','Admin'].includes(m.role));
+  const responsables = membres.filter(m => m.role !== 'Locataire');
 
   document.getElementById('modal-resa-body').innerHTML = `
     ${isAdmin ? `<div class="form-group">
@@ -1111,7 +1111,13 @@ async function saveResa(id) {
     resaPrenom = selResp.value;
     resaFamille = selResp.options[selResp.selectedIndex].dataset.famille;
   } else {
-    resaPrenom = currentUser.prenom;
+    // Pour non-admin: chercher le propriétaire de la famille parmi les cochés
+    const proprietaireFamille = membres.find(m => 
+      membresCochs.includes(m.prenom) && 
+      m.famille === currentUser.famille && 
+      m.role === 'Propriétaire'
+    );
+    resaPrenom = proprietaireFamille ? proprietaireFamille.prenom : currentUser.prenom;
     resaFamille = currentUser.famille;
   }
 
