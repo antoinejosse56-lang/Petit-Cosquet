@@ -890,6 +890,7 @@ async function renderAccueil() {
           </div>`).join('')}
       </div>` : '<div class="empty-state"><div class="empty-icon">🌴</div><div class="empty-text">Aucune réservation à venir</div></div>'}
     `;
+    setTimeout(loadMeteo, 50);
   } catch(e) {
     document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur de chargement</div></div>';
   }
