@@ -725,7 +725,7 @@
 const SUPABASE_URL = 'https://jbiphusmneoccarwkucq.supabase.co';
 const CLOUDINARY_CLOUD = 'dppgh2t7f';
 const CLOUDINARY_PRESET = 'petit-cosquet';
-const SUPABASE_KEY = 'sb_publishable_C7f6o_1kKNrIn2hhh5xRmg_Eg_JQ8i1';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiaXBodXNtbmVvY2NhcndrdWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MTI3ODIsImV4cCI6MjA4OTI4ODc4Mn0.meNA4EocaV5J8_9RL929w3fUOwFI5exFHnXr2nKRHjM';
 const MAISON_IMG = document.getElementById('maison-img-data').src;
 
 let currentUser = null;
@@ -1732,12 +1732,18 @@ async function saveMdp() {
   if (!mdp1 || mdp1.length < 4) { err.style.display='block'; err.textContent='Minimum 4 caractères'; return; }
   if (mdp1 !== mdp2) { err.style.display='block'; err.textContent='Les mots de passe ne correspondent pas'; return; }
   try {
-    await api('pc_membres', 'PATCH', {mot_de_passe: mdp1}, `?id=eq.${currentUser.id}`);
+    console.log('Saving MDP for id:', currentUser.id);
+    const result = await api('pc_membres', 'PATCH', {mot_de_passe: mdp1}, `?id=eq.${currentUser.id}`);
+    console.log('MDP saved:', result);
     currentUser.mot_de_passe = mdp1;
     err.style.display = 'none';
     closeModal('modal-mdp');
     alert('✅ Mot de passe modifié !');
-  } catch(e) { err.style.display='block'; err.textContent='Erreur: '+e.message; }
+  } catch(e) { 
+    console.error('MDP error:', e);
+    err.style.display='block'; 
+    err.textContent='Erreur: '+e.message; 
+  }
 }
 
 // ── INIT ──
