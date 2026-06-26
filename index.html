@@ -976,64 +976,151 @@ function editResa(id) {
   if (resa) openModalResa(resa);
 }
 
-function openModalResa(resa=null) {
+async function openModalResa(resa=null) {
   document.getElementById('modal-resa-title').textContent = resa ? '✏️ Modifier réservation' : '+ Nouvelle réservation';
   const resaId = resa ? resa.id : '';
-  const resaPrenom = resa ? resa.prenom : currentUser.prenom;
-  const resaFamille = resa ? resa.famille : currentUser.famille;
-  const resaNb = resa ? (resa.nombre_personnes || '') : '';
   const resaArrivee = resa ? resa.date_arrivee : '';
   const resaDepart = resa ? resa.date_depart : '';
   const resaComment = resa ? (resa.commentaire || '') : '';
 
+  // Charger les participants existants si modification
+  let participantsExistants = [];
+  let invitesExistants = [];
+  if (resaId) {
+    const parts = await api('pc_participants','GET',null,`?planning_id=eq.${resaId}`);
+    participantsExistants = parts.filter(p=>p.type==='membre').map(p=>p.prenom);
+    invitesExistants = parts.filter(p=>p.type==='invite').map(p=>p.prenom);
+  }
+
+  // Grouper membres par famille
+  const familles = {};
+  membres.filter(m=>m.role!=='Locataire').forEach(m => {
+    if (!familles[m.famille]) familles[m.famille] = [];
+    familles[m.famille].push(m);
+  });
+
+  let membresHtml = '';
+  for (const [fam, mems] of Object.entries(familles)) {
+    membresHtml += `<div style="margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--bleu);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${fam}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">`;
+    mems.forEach(m => {
+      const checked = participantsExistants.includes(m.prenom) || (!resaId && m.prenom === currentUser.prenom);
+      membresHtml += `<label style="display:flex;align-items:center;gap:4px;background:${checked?'var(--bleu)':'var(--gris)'};color:${checked?'white':'var(--texte)'};padding:4px 10px;border-radius:16px;font-size:13px;cursor:pointer">
+        <input type="checkbox" name="resa-membres" value="${m.prenom}" ${checked?'checked':''} style="display:none" onchange="updateParticipantStyle(this)">
+        ${m.prenom}
+      </label>`;
+    });
+    membresHtml += `</div></div>`;
+  }
+
+  const invitesHtml = invitesExistants.map((inv,i) => `
+    <div class="invite-row" style="display:flex;gap:8px;margin-bottom:6px">
+      <input type="text" class="form-input invite-nom" value="${inv}" placeholder="Prénom invité" style="flex:1">
+      <button onclick="this.parentNode.remove();updateNbPersonnes()" style="background:var(--gris);border:none;border-radius:8px;padding:6px 10px;cursor:pointer">✕</button>
+    </div>`).join('');
+
   document.getElementById('modal-resa-body').innerHTML = `
     <div class="form-group">
-      <label class="form-label">Famille / Prénom</label>
-      <select class="form-select" id="resa-prenom">
-        ${membres.filter(mb=>['Propriétaire','Admin','Enfant'].includes(mb.role)).map(mb=>`<option value="${mb.prenom}" data-famille="${mb.famille}" ${mb.prenom===resaPrenom?'selected':''}>${mb.prenom} (${mb.famille})</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Nombre de personnes</label>
-      <input type="number" class="form-input" id="resa-nb" min="1" max="30" value="${resaNb}">
-    </div>
-    <div class="form-group">
       <label class="form-label">Date d'arrivée</label>
-      <input type="date" class="form-input" id="resa-arrivee" value="${resaArrivee}">
+      <input type="date" class="form-input" id="resa-arrivee" value="${resaArrivee}" onchange="updateNbPersonnes()">
     </div>
     <div class="form-group">
       <label class="form-label">Date de départ</label>
       <input type="date" class="form-input" id="resa-depart" value="${resaDepart}">
     </div>
     <div class="form-group">
+      <label class="form-label">Participants membres</label>
+      ${membresHtml}
+    </div>
+    <div class="form-group">
+      <label class="form-label">Invités extérieurs</label>
+      <div id="invites-list">${invitesHtml}</div>
+      <button class="btn btn-rose btn-sm" style="margin-top:6px" onclick="addInvite()">+ Ajouter un invité</button>
+    </div>
+    <div class="form-group" style="background:var(--gris);border-radius:10px;padding:10px;text-align:center">
+      <div style="font-size:12px;color:var(--gris-mid)">Total participants</div>
+      <div id="nb-total" style="font-size:24px;font-weight:700;color:var(--bleu)">1</div>
+    </div>
+    <div class="form-group">
       <label class="form-label">Commentaire</label>
       <input type="text" class="form-input" id="resa-comment" value="${resaComment}" placeholder="Optionnel">
     </div>
     <button class="btn btn-primary btn-full" onclick="saveResa('${resaId}')">💾 Enregistrer</button>
-    ${resaId ? `<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteResa('${resaId}');closeModal('modal-resa')">🗑 Supprimer cette réservation</button>` : ''}
+    ${resaId ? `<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteResa('${resaId}');closeModal('modal-resa')">🗑 Supprimer</button>` : ''}
   `;
   document.getElementById('modal-resa').classList.add('open');
+  updateNbPersonnes();
+}
+
+function updateParticipantStyle(cb) {
+  const label = cb.parentNode;
+  label.style.background = cb.checked ? 'var(--bleu)' : 'var(--gris)';
+  label.style.color = cb.checked ? 'white' : 'var(--texte)';
+  updateNbPersonnes();
+}
+
+function updateNbPersonnes() {
+  const membres_coches = document.querySelectorAll('input[name="resa-membres"]:checked').length;
+  const invites = document.querySelectorAll('.invite-nom').length;
+  const total = membres_coches + invites;
+  const el = document.getElementById('nb-total');
+  if (el) el.textContent = total;
+}
+
+function addInvite() {
+  const div = document.createElement('div');
+  div.className = 'invite-row';
+  div.style.cssText = 'display:flex;gap:8px;margin-bottom:6px';
+  div.innerHTML = `<input type="text" class="form-input invite-nom" placeholder="Prénom invité" style="flex:1" oninput="updateNbPersonnes()">
+    <button onclick="this.parentNode.remove();updateNbPersonnes()" style="background:var(--gris);border:none;border-radius:8px;padding:6px 10px;cursor:pointer">✕</button>`;
+  document.getElementById('invites-list').appendChild(div);
+  updateNbPersonnes();
 }
 
 async function saveResa(id) {
-  const sel = document.getElementById('resa-prenom');
-  const opt = sel.options[sel.selectedIndex];
+  const arrivee = document.getElementById('resa-arrivee').value;
+  const depart = document.getElementById('resa-depart').value;
+  if (!arrivee || !depart) { alert('Dates obligatoires'); return; }
+
+  const membresCochs = [...document.querySelectorAll('input[name="resa-membres"]:checked')].map(cb=>cb.value);
+  const invites = [...document.querySelectorAll('.invite-nom')].map(i=>i.value.trim()).filter(v=>v);
+  const totalPersonnes = membresCochs.length + invites.length;
+
+  // Déterminer prénom et famille du responsable
+  const responsable = membresCochs[0] || currentUser.prenom;
+  const membreObj = membres.find(m=>m.prenom===responsable) || currentUser;
+
   const data = {
-    prenom: sel.value,
-    famille: opt.dataset.famille,
-    nombre_personnes: parseInt(document.getElementById('resa-nb').value)||null,
-    date_arrivee: document.getElementById('resa-arrivee').value,
-    date_depart: document.getElementById('resa-depart').value,
+    prenom: currentUser.prenom,
+    famille: currentUser.famille,
+    nombre_personnes: totalPersonnes || 1,
+    date_arrivee: arrivee,
+    date_depart: depart,
     commentaire: document.getElementById('resa-comment').value||null,
     email_proprietaire: currentUser.email||null
   };
-  if (!data.date_arrivee || !data.date_depart) { alert('Dates obligatoires'); return; }
+
   try {
+    let resaId = id;
     if (id) {
       await api('pc_planning', 'PATCH', data, `?id=eq.${id}`);
+      // Supprimer anciens participants
+      await api('pc_participants', 'DELETE', null, `?planning_id=eq.${id}`);
     } else {
-      await api('pc_planning', 'POST', data);
+      const result = await api('pc_planning', 'POST', data);
+      resaId = result[0].id;
     }
+
+    // Sauvegarder participants membres
+    for (const prenom of membresCochs) {
+      await api('pc_participants', 'POST', {planning_id: resaId, prenom, type: 'membre'});
+    }
+    // Sauvegarder invités
+    for (const prenom of invites) {
+      await api('pc_participants', 'POST', {planning_id: resaId, prenom, type: 'invite'});
+    }
+
     closeModal('modal-resa');
     planning = await api('pc_planning', 'GET', null, '?order=date_arrivee');
     renderCalendar();
