@@ -863,11 +863,6 @@ async function renderAccueil() {
         </div>
       </div>
 
-      <div class="section-title">🌤️ Météo & Marées</div>
-      <div id="meteo-container">
-        <div class="loading"><div class="spinner"></div>Chargement météo...</div>
-      </div>
-
       ${presentsAujourdhui.length > 0 ? `
       <div class="section-title">🏠 Présents aujourd'hui</div>
       <div class="card">
@@ -895,7 +890,6 @@ async function renderAccueil() {
           </div>`).join('')}
       </div>` : '<div class="empty-state"><div class="empty-icon">🌴</div><div class="empty-text">Aucune réservation à venir</div></div>'}
     `;
-    setTimeout(loadMeteo, 50);
   } catch(e) {
     document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur de chargement</div></div>';
   }
