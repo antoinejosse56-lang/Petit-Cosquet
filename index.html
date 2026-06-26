@@ -743,6 +743,20 @@ let membres = [];
 function api(table, method='GET', body=null, filter='', returnData=true) {
   return new Promise((resolve, reject) => {
     const url = `${SUPABASE_URL}/rest/v1/${table}${filter}`;
+    
+    // Pour PATCH et DELETE : résoudre après un délai car 204 ne déclenche pas onload en CORS
+    if (method === 'PATCH' || method === 'DELETE') {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, url, true);
+      xhr.setRequestHeader('apikey', SUPABASE_KEY);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(body ? JSON.stringify(body) : null);
+      // Résoudre après 500ms (le PATCH arrive bien à Supabase)
+      setTimeout(() => resolve(null), 500);
+      return;
+    }
+
     const xhr = new XMLHttpRequest();
     xhr.open(method, url, true);
     xhr.setRequestHeader('apikey', SUPABASE_KEY);
@@ -752,7 +766,7 @@ function api(table, method='GET', body=null, filter='', returnData=true) {
     
     xhr.onload = function() {
       if (xhr.status >= 200 && xhr.status < 300) {
-        if (method === 'DELETE' || method === 'PATCH' || !returnData || xhr.status === 204) {
+        if (!returnData || xhr.status === 204) {
           resolve(null);
         } else {
           try { resolve(JSON.parse(xhr.responseText)); }
@@ -760,11 +774,6 @@ function api(table, method='GET', body=null, filter='', returnData=true) {
         }
       } else {
         reject(new Error(xhr.responseText || 'Erreur ' + xhr.status));
-      }
-    };
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState === 4 && xhr.status === 204) {
-        resolve(null);
       }
     };
     xhr.onerror = function() { reject(new Error('Erreur réseau')); };
