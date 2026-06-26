@@ -820,7 +820,8 @@ function renderMembresList() {
 function selectMembre(id, prenom, role, famille) {
   document.querySelectorAll('.membre-btn').forEach(b => b.classList.remove('selected'));
   event.target.classList.add('selected');
-  currentUser = { id, prenom, role, famille };
+  // Prendre l'objet complet depuis membres pour avoir mot_de_passe
+  currentUser = membres.find(m => m.id === id) || { id, prenom, role, famille };
   document.getElementById('btn-entrer').disabled = false;
 }
 
