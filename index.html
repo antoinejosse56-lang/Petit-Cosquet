@@ -1023,7 +1023,17 @@ async function openModalResa(resa=null) {
       <button onclick="this.parentNode.remove();updateNbPersonnes()" style="background:var(--gris);border:none;border-radius:8px;padding:6px 10px;cursor:pointer">✕</button>
     </div>`).join('');
 
+  // Sélecteur responsable visible uniquement pour Admin
+  const isAdmin = currentUser.role === 'Admin';
+  const responsables = membres.filter(m => ['Propriétaire','Admin'].includes(m.role));
+
   document.getElementById('modal-resa-body').innerHTML = `
+    ${isAdmin ? `<div class="form-group">
+      <label class="form-label">Responsable de la réservation</label>
+      <select class="form-select" id="resa-responsable" onchange="updateFamilleFromResponsable()">
+        ${responsables.map(m => `<option value="${m.prenom}" data-famille="${m.famille}" ${m.prenom === (resa ? resa.prenom : currentUser.prenom) ? 'selected' : ''}>${m.prenom} (${m.famille})</option>`).join('')}
+      </select>
+    </div>` : ''}
     <div class="form-group">
       <label class="form-label">Date d'arrivée</label>
       <input type="date" class="form-input" id="resa-arrivee" value="${resaArrivee}" onchange="updateNbPersonnes()">
@@ -1054,6 +1064,10 @@ async function openModalResa(resa=null) {
   `;
   document.getElementById('modal-resa').classList.add('open');
   updateNbPersonnes();
+}
+
+function updateFamilleFromResponsable() {
+  // Rien à faire visuellement pour l'instant
 }
 
 function updateParticipantStyle(cb) {
@@ -1091,12 +1105,19 @@ async function saveResa(id) {
   const totalPersonnes = membresCochs.length + invites.length;
 
   // Déterminer prénom et famille du responsable
-  const responsable = membresCochs[0] || currentUser.prenom;
-  const membreObj = membres.find(m=>m.prenom===responsable) || currentUser;
+  const selResp = document.getElementById('resa-responsable');
+  let resaPrenom, resaFamille;
+  if (selResp) {
+    resaPrenom = selResp.value;
+    resaFamille = selResp.options[selResp.selectedIndex].dataset.famille;
+  } else {
+    resaPrenom = currentUser.prenom;
+    resaFamille = currentUser.famille;
+  }
 
   const data = {
-    prenom: currentUser.prenom,
-    famille: currentUser.famille,
+    prenom: resaPrenom,
+    famille: resaFamille,
     nombre_personnes: totalPersonnes || 1,
     date_arrivee: arrivee,
     date_depart: depart,
