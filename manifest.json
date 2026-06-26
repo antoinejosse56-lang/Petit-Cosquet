@@ -1,0 +1,24 @@
+{
+  "name": "Petit Cosquet",
+  "short_name": "Petit Cosquet",
+  "description": "Application familiale - Belle-Île-en-Mer",
+  "start_url": "/Petit-Cosquet/",
+  "display": "standalone",
+  "background_color": "#2E6FD9",
+  "theme_color": "#2E6FD9",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
