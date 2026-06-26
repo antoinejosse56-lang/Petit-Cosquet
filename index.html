@@ -749,11 +749,11 @@ async function api(table, method='GET', body=null, filter='', returnData=true) {
   if (body) opts.body = JSON.stringify(body);
   
   const r = await fetch(url, opts);
-  if (!r.ok) {
+  if (!r.ok && r.status !== 204) {
     const errText = await r.text();
     throw new Error(errText);
   }
-  if (method === 'DELETE' || method === 'PATCH' || !returnData) return null;
+  if (method === 'DELETE' || method === 'PATCH' || r.status === 204 || !returnData) return null;
   const text = await r.text();
   return text ? JSON.parse(text) : null;
 }
