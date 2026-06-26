@@ -635,13 +635,13 @@
     <div>
       <div class="header-title">🏠 Petit Cosquet</div>
     </div>
-    <div class="header-user" id="header-user">—</div>
+    <div class="header-user" id="header-user" onclick="openChangeMdp()" style="cursor:pointer">—</div>
   </div>
 
   <div class="audio-bar">
     <span class="audio-label">🎵</span>
     <audio controls preload="none" style="flex:1;height:28px;">
-      <source src="https://drive.google.com/uc?export=download&id=1RKeYBriaQm7f62fpIl9a4OR4u4m25hdM" type="audio/mpeg">
+      <source src="https://antoinejosse56-lang.github.io/Petit-Cosquet/Le%20petit%20Cosquet.mp3" type="audio/mpeg">
     </audio>
   </div>
 
@@ -656,6 +656,24 @@
 
   <div class="content" id="content">
     <!-- contenu dynamique -->
+  </div>
+</div>
+
+<!-- MODAL MOT DE PASSE -->
+<div class="modal-overlay" id="modal-mdp">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-mdp')">✕</button>
+    <div class="modal-title">🔑 Changer mon mot de passe</div>
+    <div class="form-group">
+      <label class="form-label">Nouveau mot de passe</label>
+      <input type="password" class="form-input" id="new-mdp1" placeholder="Nouveau mot de passe">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirmer le mot de passe</label>
+      <input type="password" class="form-input" id="new-mdp2" placeholder="Confirmer">
+    </div>
+    <div id="mdp-error" style="color:red;font-size:13px;display:none"></div>
+    <button class="btn btn-primary btn-full" onclick="saveMdp()">💾 Enregistrer</button>
   </div>
 </div>
 
@@ -765,6 +783,13 @@ function selectMembre(id, prenom, role, famille) {
 
 function entrerApp() {
   if (!currentUser) return;
+  const mdp = document.getElementById('input-mdp').value;
+  const expected = currentUser.mot_de_passe || currentUser.prenom.toLowerCase();
+  if (mdp !== expected) {
+    document.getElementById('login-error').style.display = 'block';
+    return;
+  }
+  document.getElementById('login-error').style.display = 'none';
   document.getElementById('screen-select').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('header-user').textContent = `${currentUser.prenom} · ${currentUser.role}`;
@@ -1369,8 +1394,33 @@ document.querySelectorAll('.modal-overlay').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
 });
 
+// ── MOT DE PASSE ──
+function openChangeMdp() {
+  document.getElementById('modal-mdp').classList.add('open');
+}
+
+async function saveMdp() {
+  const mdp1 = document.getElementById('new-mdp1').value;
+  const mdp2 = document.getElementById('new-mdp2').value;
+  const err = document.getElementById('mdp-error');
+  if (!mdp1 || mdp1.length < 4) { err.style.display='block'; err.textContent='Minimum 4 caractères'; return; }
+  if (mdp1 !== mdp2) { err.style.display='block'; err.textContent='Les mots de passe ne correspondent pas'; return; }
+  try {
+    await api('pc_membres', 'PATCH', {mot_de_passe: mdp1}, `?id=eq.${currentUser.id}`);
+    currentUser.mot_de_passe = mdp1;
+    err.style.display = 'none';
+    closeModal('modal-mdp');
+    alert('✅ Mot de passe modifié !');
+  } catch(e) { err.style.display='block'; err.textContent='Erreur: '+e.message; }
+}
+
 // ── INIT ──
 loadMembres();
+// Init hero login image
+window.addEventListener('DOMContentLoaded', () => {
+  const h = document.getElementById('hero-login');
+  if (h) h.src = MAISON_IMG;
+});
 </script>
 </body>
 </html>
