@@ -722,7 +722,7 @@
 
 <script>
 const SUPABASE_URL = 'https://jbiphusmneoccarwkucq.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiaXBodXNtbmVvY2NhcndrdWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MTI3ODIsImV4cCI6MjA4OTI4ODc4Mn0.meNA4EocaV5J8_9RL929w3fUOwFI5exFHnXr2nKRHjM';
+const SUPABASE_KEY = 'sb_publishable_C7f6o_1kKNrIn2hhh5xRmg_Eg_JQ8i1';
 const MAISON_IMG = document.getElementById('maison-img-data').src;
 
 let currentUser = null;
@@ -741,8 +741,11 @@ async function api(table, method='GET', body=null, filter='', returnData=true) {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
+      'X-Client-Info': 'petit-cosquet/1.0',
       ...(prefer ? {'Prefer': prefer} : {})
-    }
+    },
+    mode: 'cors',
+    credentials: 'omit'
   };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
