@@ -664,6 +664,7 @@
     <button class="nav-tab" onclick="showTab('arrivees')"><span>🚢</span>Arrivées</button>
     <button class="nav-tab" onclick="showTab('checklist')"><span>🧹</span>Ménage</button>
     <button class="nav-tab" onclick="showTab('photos')"><span>📸</span>Photos</button>
+    <button class="nav-tab" onclick="showTab('cuisine')"><span>👨‍🍳</span>Cuisine</button>
   </div>
 
   <div class="content" id="content">
@@ -857,6 +858,7 @@ function showTab(tab) {
     case 'arrivees': renderArrivees(); break;
     case 'checklist': renderChecklist(); break;
     case 'photos': renderPhotos(); break;
+    case 'cuisine': renderCuisine(); break;
   }
 }
 
@@ -1779,6 +1781,140 @@ async function deletePhoto(id, publicId) {
   if (!confirm('Supprimer cette photo ?')) return;
   await api('pc_photos','DELETE',null,`?id=eq.${id}`);
   renderPhotos();
+}
+
+// ── CUISINE ──
+async function renderCuisine() {
+  try {
+    if (!planning.length) planning = await api('pc_planning','GET',null,'?order=date_arrivee');
+    const allParticipants = await api('pc_participants','GET',null,'');
+    const today = new Date().toISOString().split('T')[0];
+
+    // Construire présences par jour (uniquement réservations validées)
+    const presencesParJour = {};
+    for (const r of planning.filter(p => p.statut === 'validé')) {
+      const parts = allParticipants.filter(p => p.planning_id === r.id);
+      const personnes = parts.length > 0
+        ? parts.map(p => p.prenom)
+        : [r.prenom];
+      let d = new Date(r.date_arrivee + 'T00:00:00');
+      const fin = new Date(r.date_depart + 'T00:00:00');
+      while (d <= fin) {
+        const ds = d.toISOString().split('T')[0];
+        if (!presencesParJour[ds]) presencesParJour[ds] = new Set();
+        personnes.forEach(p => presencesParJour[ds].add(p));
+        d.setDate(d.getDate()+1);
+      }
+    }
+
+    // Jours avec plusieurs familles
+    const joursConcernes = Object.entries(presencesParJour)
+      .filter(([ds, personnes]) => {
+        const fams = new Set();
+        planning.filter(r => r.statut === 'validé' && r.date_arrivee <= ds && r.date_depart >= ds)
+          .forEach(r => fams.add(r.famille));
+        return fams.size > 1 && ds >= today;
+      })
+      .sort(([a],[b]) => a.localeCompare(b))
+      .slice(0, 21);
+
+    if (joursConcernes.length === 0) {
+      document.getElementById('content').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">👨‍🍳</div>
+          <div class="empty-text">Aucun jour de cuisine partagé prévu<br><small>Actif uniquement quand plusieurs familles sont présentes</small></div>
+        </div>`;
+      return;
+    }
+
+    // Charger les inscriptions cuisine
+    const cuisine = await api('pc_cuisine','GET',null,'?order=date,created_at');
+
+    let html = '<div class="section-title">Planning cuisine</div>';
+
+    for (const [dateStr, presentsSet] of joursConcernes) {
+      const presents = [...presentsSet];
+      const inscrits = cuisine.filter(c => c.date === dateStr);
+      const nbInscrits = inscrits.length;
+      const placesRestantes = 6 - nbInscrits;
+      const estInscrit = inscrits.find(c => c.membre === currentUser.prenom);
+      const complet = nbInscrits >= 6;
+      const menuMidi = inscrits[0]?.menu_midi || '';
+      const menuSoir = inscrits[0]?.menu_soir || '';
+
+      const couleurGroupe = nbInscrits === 0 ? 'var(--gris-mid)' : 
+                            nbInscrits < 3 ? 'var(--orange)' : 'var(--vert)';
+
+      html += `<div class="card" style="margin-bottom:12px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${formatDate(dateStr)}</div>
+            <div class="card-subtitle" style="color:${couleurGroupe}">
+              👨‍🍳 ${nbInscrits}/6 cuisiniers
+              ${nbInscrits >= 3 ? ' ✅' : nbInscrits > 0 ? ' (min. 3)' : ''}
+            </div>
+          </div>
+          ${estInscrit ? 
+            `<button class="btn btn-danger btn-sm" onclick="desinscrireCuisine('${dateStr}')">Me désinscrire</button>` :
+            !complet && presents.includes(currentUser.prenom) ?
+            `<button class="btn btn-primary btn-sm" onclick="inscrireCuisine('${dateStr}')">M'inscrire</button>` :
+            complet ? `<span class="badge badge-bleu">Complet</span>` : 
+            `<span style="font-size:11px;color:var(--gris-mid)">Non présent</span>`
+          }
+        </div>
+
+        ${nbInscrits > 0 ? `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+          ${inscrits.map(c => `
+            <span style="background:${c.membre===currentUser.prenom?'var(--bleu)':'var(--gris)'};color:${c.membre===currentUser.prenom?'white':'var(--texte)'};padding:4px 10px;border-radius:16px;font-size:13px">
+              ${c.membre}
+            </span>`).join('')}
+        </div>` : `<div style="font-size:13px;color:var(--gris-mid);margin:8px 0">Aucun cuisinier inscrit</div>`}
+
+        <div style="border-top:1px solid var(--gris);padding-top:10px;margin-top:4px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <div style="font-size:11px;color:var(--gris-mid);margin-bottom:4px">🌞 Menu midi</div>
+              ${estInscrit ? 
+                `<input type="text" class="form-input" id="menu-midi-${dateStr}" value="${menuMidi}" placeholder="Menu midi..." style="font-size:13px;padding:6px 8px" onblur="saveMenu('${dateStr}')">` :
+                `<div style="font-size:13px;color:${menuMidi?'var(--texte)':'var(--gris-mid)'}">${menuMidi||'À définir'}</div>`
+              }
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--gris-mid);margin-bottom:4px">🌙 Menu soir</div>
+              ${estInscrit ?
+                `<input type="text" class="form-input" id="menu-soir-${dateStr}" value="${menuSoir}" placeholder="Menu soir..." style="font-size:13px;padding:6px 8px" onblur="saveMenu('${dateStr}')">` :
+                `<div style="font-size:13px;color:${menuSoir?'var(--texte)':'var(--gris-mid)'}">${menuSoir||'À définir'}</div>`
+              }
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    document.getElementById('content').innerHTML = html;
+  } catch(e) {
+    console.error(e);
+    document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur</div></div>';
+  }
+}
+
+async function inscrireCuisine(date) {
+  await api('pc_cuisine','POST',{date, membre: currentUser.prenom, menu_midi: null, menu_soir: null},'',false);
+  setTimeout(() => renderCuisine(), 600);
+}
+
+async function desinscrireCuisine(date) {
+  if (!confirm('Se désinscrire de ce jour ?')) return;
+  await api('pc_cuisine','DELETE',null,`?date=eq.${date}&membre=eq.${currentUser.prenom}`);
+  setTimeout(() => renderCuisine(), 600);
+}
+
+async function saveMenu(date) {
+  const midi = document.getElementById('menu-midi-'+date)?.value || '';
+  const soir = document.getElementById('menu-soir-'+date)?.value || '';
+  // Mettre à jour le menu pour tous les inscrits de ce jour
+  await api('pc_cuisine','PATCH',{menu_midi: midi, menu_soir: soir},`?date=eq.${date}`);
 }
 
 // ── UTILITAIRES ──
