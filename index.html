@@ -1119,8 +1119,6 @@ async function openModalResa(resa=null) {
 
   // Sélecteur responsable visible uniquement pour Admin
   const isAdmin = currentUser.role === 'Admin';
-  // Vérifier droits
-  if (!['Admin','Propriétaire'].includes(currentUser.role)) { closeModal('modal-resa'); return; }
   const responsables = membres.filter(m => m.role !== 'Locataire');
 
   document.getElementById('modal-resa-body').innerHTML = `
@@ -1364,8 +1362,6 @@ async function renderRepas() {
           const soir = repasPersonne ? repasPersonne.soir !== false : true;
           const isMe = p.prenom === currentUser.prenom;
           const isAdmin = currentUser.role === 'Admin';
-  // Vérifier droits
-  if (!['Admin','Propriétaire'].includes(currentUser.role)) { closeModal('modal-resa'); return; }
           const canToggle = isMe || isAdmin;
           return `<div class="repas-toggle">
             <div>
