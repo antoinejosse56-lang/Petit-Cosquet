@@ -1849,6 +1849,9 @@ async function renderPhotos() {
     const albums = await api('pc_albums','GET',null,'?order=created_at.desc');
     albumsCache = albums;
     musiques = await api('pc_musiques','GET',null,'?order=created_at');
+    const anneeEnCours = new Date().getFullYear();
+    const photosRecentes = await api('pc_photos','GET',null,`?order=created_at.desc&limit=9`);
+    diaporamaPhotos = photosRecentes;
     const canAdmin = ['Admin','Propriétaire'].includes(currentUser.role);
 
     // Vue albums
@@ -1857,6 +1860,17 @@ async function renderPhotos() {
         <div class="section-title" style="margin:0">📁 Albums</div>
         ${canAdmin ? `<button class="btn btn-primary btn-sm" onclick="creerAlbum()">+ Album</button>` : ''}
       </div>
+
+      ${photosRecentes.length > 0 ? `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="section-title" style="margin:0">📷 Photos récentes</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:16px">
+        ${photosRecentes.map((p,i) => `
+          <div style="position:relative;aspect-ratio:1;cursor:pointer" onclick="openPhoto('${p.url}','${p.auteur||''}','${p.legende||''}','${p.date_prise||''}',${i})">
+            <img src="${p.thumbnail_url||p.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px" loading="lazy">
+          </div>`).join('')}
+      </div>` : ''}
 
       ${albums.length > 0 ? `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
