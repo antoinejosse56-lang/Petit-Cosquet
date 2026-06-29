@@ -903,9 +903,10 @@ function urlBase64ToUint8Array(base64String) {
 // ── NAVIGATION ──
 function showTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.nav-tab').forEach((t,i) => {
-    const tabs = ['accueil','planning','repas','covoiturage','arrivees','checklist'];
-    t.classList.toggle('active', tabs[i] === tab);
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    const onclickAttr = t.getAttribute('onclick') || '';
+    const tabName = onclickAttr.match(/showTab\('([^']+)'\)/)?.[1];
+    t.classList.toggle('active', tabName === tab);
   });
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading"><div class="spinner"></div>Chargement...</div>';
