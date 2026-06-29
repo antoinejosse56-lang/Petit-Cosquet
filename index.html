@@ -730,6 +730,7 @@
 <script>
 const SUPABASE_URL = 'https://jbiphusmneoccarwkucq.supabase.co';
 const CLOUDINARY_CLOUD = 'dppgh2t7f';
+const VAPID_PUBLIC_KEY = 'BH7_8QOPSRvnI6yL-IRQZWhZQDdhjJExRkQsWzVVr6mMeKhrj4FqdoBtuXpKzTIa_pswLIexjEOOcB-6LdotxvY';
 const CLOUDINARY_PRESET = 'petit-cosquet';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiaXBodXNtbmVvY2NhcndrdWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MTI3ODIsImV4cCI6MjA4OTI4ODc4Mn0.meNA4EocaV5J8_9RL929w3fUOwFI5exFHnXr2nKRHjM';
 const MAISON_IMG = document.getElementById('maison-img-data').src;
@@ -839,6 +840,62 @@ function entrerApp() {
   document.getElementById('app').style.display = 'flex';
   document.getElementById('header-user').textContent = `${currentUser.prenom} · ${currentUser.role}`;
   showTab('accueil');
+  // Enregistrer service worker et demander permission notifications
+  initPushNotifications();
+}
+
+async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.register('/Petit-Cosquet/sw.js');
+    await navigator.serviceWorker.ready;
+    
+    // Vérifier si déjà abonné
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      // Mettre à jour en base
+      await saveSubscription(existing);
+      return;
+    }
+
+    // Demander permission
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+
+    // S'abonner
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    await saveSubscription(subscription);
+    console.log('Push notifications activées !');
+  } catch(e) {
+    console.error('Push init error:', e);
+  }
+}
+
+async function saveSubscription(subscription) {
+  try {
+    await api('pc_push_subscriptions', 'POST', {
+      membre: currentUser.prenom,
+      famille: currentUser.famille,
+      subscription: subscription.toJSON()
+    }, '', false);
+  } catch(e) {
+    // Déjà enregistré, on PATCH
+    await api('pc_push_subscriptions', 'PATCH', {
+      subscription: subscription.toJSON()
+    }, `?membre=eq.${currentUser.prenom}`);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
 }
 
 // ── NAVIGATION ──
@@ -1255,7 +1312,40 @@ async function saveResa(id) {
     closeModal('modal-resa');
     planning = await api('pc_planning', 'GET', null, '?order=date_arrivee');
     renderCalendar();
+
+    // Envoyer notification au référent si c'est une demande en attente
+    if (data.statut === 'en attente') {
+      notifierReferent(resaFamille, `${currentUser.prenom} demande une réservation`, 
+        `Du ${formatDate(arrivee)} au ${formatDate(depart)}`);
+    }
   } catch(e) { alert('Erreur: ' + e.message); }
+}
+
+async function notifierReferent(famille, titre, corps) {
+  try {
+    // Trouver les abonnements des référents de cette famille
+    const referents = membres.filter(m => m.role === 'Propriétaire' && m.famille === famille);
+    for (const ref of referents) {
+      const subs = await api('pc_push_subscriptions', 'GET', null, `?membre=eq.${ref.prenom}`);
+      if (subs && subs.length > 0) {
+        // Appeler une Edge Function Supabase pour envoyer la notification
+        await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          },
+          body: JSON.stringify({
+            subscription: subs[0].subscription,
+            title: titre,
+            body: corps
+          })
+        });
+      }
+    }
+  } catch(e) {
+    console.error('Notification error:', e);
+  }
 }
 
 async function deleteResa(id) {
