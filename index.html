@@ -1797,6 +1797,7 @@ async function renderCuisine() {
       const personnes = parts.length > 0
         ? parts.map(p => p.prenom)
         : [r.prenom];
+      // Inclure aussi les invités (type='invite')
       let d = new Date(r.date_arrivee + 'T12:00:00');
       const fin = new Date(r.date_depart + 'T12:00:00');
       while (d <= fin) {
@@ -1854,6 +1855,7 @@ async function renderCuisine() {
               ${nbInscrits >= 3 ? ' ✅' : nbInscrits > 0 ? ' (min. 3)' : ''}
             </div>
           </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${estInscrit ? 
             `<button class="btn btn-danger btn-sm" onclick="desinscrireCuisine('${dateStr}')">Me désinscrire</button>` :
             !complet && presents.includes(currentUser.prenom) ?
@@ -1861,6 +1863,9 @@ async function renderCuisine() {
             complet ? `<span class="badge badge-bleu">Complet</span>` : 
             `<span style="font-size:11px;color:var(--gris-mid)">Non présent</span>`
           }
+          ${!complet && ['Admin','Propriétaire'].includes(currentUser.role) ? 
+            `<button class="btn btn-rose btn-sm" onclick="inscrireInviteCuisine('${dateStr}', '${presents.join(',')}', '${inscrits.map(c=>c.membre).join(',')}')">+ Inscrire un invité</button>` : ''}
+        </div>
         </div>
 
         ${nbInscrits > 0 ? `
@@ -1897,6 +1902,40 @@ async function renderCuisine() {
     console.error(e);
     document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur</div></div>';
   }
+}
+
+async function inscrireInviteCuisine(date, presentsStr, inscritStr) {
+  // Récupérer les participants de ce jour qui ne sont pas encore inscrits
+  const presents = presentsStr ? presentsStr.split(',') : [];
+  const inscrits = inscritStr ? inscritStr.split(',').filter(Boolean) : [];
+  const nonInscrits = presents.filter(p => !inscrits.includes(p) && p !== currentUser.prenom);
+  
+  if (nonInscrits.length === 0) {
+    alert('Tous les présents sont déjà inscrits en cuisine pour ce jour.');
+    return;
+  }
+
+  // Afficher un modal de sélection
+  const modal = document.getElementById('modal-resa');
+  document.getElementById('modal-resa-title').textContent = '👨‍🍳 Inscrire un participant';
+  document.getElementById('modal-resa-body').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Choisir la personne à inscrire</label>
+      <select class="form-select" id="invite-cuisine-select">
+        ${nonInscrits.map(p => `<option value="${p}">${p}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="confirmerInscriptionInvite('${date}')">✅ Inscrire</button>
+  `;
+  modal.classList.add('open');
+}
+
+async function confirmerInscriptionInvite(date) {
+  const membre = document.getElementById('invite-cuisine-select').value;
+  if (!membre) return;
+  await api('pc_cuisine','POST',{date, membre, menu_midi: null, menu_soir: null},'',false);
+  closeModal('modal-resa');
+  setTimeout(() => renderCuisine(), 600);
 }
 
 async function inscrireCuisine(date) {
