@@ -1836,19 +1836,89 @@ async function deleteTache(id) {
 }
 
 // ── PHOTOS ──
+let currentAlbumId = null;
+let diaporamaInterval = null;
+let diaporamaIndex = 0;
+let diaporamaPhotos = [];
+let musiques = [];
+let currentMusiqueIndex = 0;
+let diaporamaAudio = null;
+
 async function renderPhotos() {
   try {
-    const photos = await api('pc_photos','GET',null,'?order=created_at.desc');
+    const albums = await api('pc_albums','GET',null,'?order=created_at.desc');
+    albumsCache = albums;
+    musiques = await api('pc_musiques','GET',null,'?order=created_at');
+    const canAdmin = ['Admin','Propriétaire'].includes(currentUser.role);
+
+    // Vue albums
+    let html = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="section-title" style="margin:0">📁 Albums</div>
+        ${canAdmin ? `<button class="btn btn-primary btn-sm" onclick="creerAlbum()">+ Album</button>` : ''}
+      </div>
+
+      ${albums.length > 0 ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        ${albums.map(a => `
+          <div class="card" style="cursor:pointer;padding:12px" onclick="ouvrirAlbumById('${a.id}')">
+            <div style="font-size:24px;margin-bottom:6px">📷</div>
+            <div style="font-weight:700;font-size:14px">${a.nom}</div>
+            ${a.annee ? `<div style="font-size:11px;color:var(--gris-mid)">${a.annee}</div>` : ''}
+            ${canAdmin ? `
+            <div style="display:flex;gap:6px;margin-top:8px" onclick="event.stopPropagation()">
+              <button class="btn btn-rose btn-sm" style="flex:1;font-size:11px" onclick="renommerAlbumById('${a.id}')">✏️</button>
+              <button class="btn btn-danger btn-sm" style="font-size:11px" onclick="supprimerAlbum('${a.id}')">🗑</button>
+            </div>` : ''}
+          </div>`).join('')}
+      </div>` : `
+      <div class="empty-state" style="margin-bottom:16px">
+        <div class="empty-icon">📁</div>
+        <div class="empty-text">Aucun album<br><small>${canAdmin?'Créez votre premier album !':''}</small></div>
+      </div>`}
+
+      ${canAdmin ? `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="section-title" style="margin:0">🎵 Musiques</div>
+        <button class="btn btn-rose btn-sm" onclick="ajouterMusique()">+ Musique</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        ${musiques.length > 0 ? musiques.map(m => `
+          <div class="resa-item">
+            <span style="font-size:20px">🎵</span>
+            <div class="resa-info">
+              <div class="resa-name">${m.titre}</div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="supprimerMusique('${m.id}')">🗑</button>
+          </div>`).join('') : '<div style="color:var(--gris-mid);font-size:13px;text-align:center;padding:8px">Aucune musique</div>'}
+      </div>` : ''}
+    `;
+
+    document.getElementById('content').innerHTML = html;
+  } catch(e) {
+    console.error(e);
+    document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur</div></div>';
+  }
+}
+
+async function ouvrirAlbum(albumId, albumNom) {
+  currentAlbumId = albumId;
+  try {
+    const photos = await api('pc_photos','GET',null,`?album_id=eq.${albumId}&order=created_at.desc`);
     const canUpload = currentUser.role !== 'Locataire';
+    diaporamaPhotos = photos;
 
     document.getElementById('content').innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <button class="btn btn-rose btn-sm" onclick="renderPhotos()">← Retour</button>
+        <div class="section-title" style="margin:0;flex:1">${albumNom}</div>
+        ${photos.length > 1 ? `<button class="btn btn-primary btn-sm" onclick="lancerDiaporama()">▶ Diaporama</button>` : ''}
+      </div>
+
       ${canUpload ? `
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-title" style="margin-bottom:10px">📸 Ajouter des photos</div>
+      <div class="card" style="margin-bottom:12px">
         <input type="file" id="photo-input" accept="image/*" multiple style="display:none" onchange="uploadPhotos(this)">
-        <button class="btn btn-primary btn-full" onclick="document.getElementById('photo-input').click()">
-          + Choisir des photos
-        </button>
+        <button class="btn btn-primary btn-full" onclick="document.getElementById('photo-input').click()">+ Ajouter des photos</button>
         <div id="upload-progress" style="display:none;margin-top:8px">
           <div style="background:var(--gris);border-radius:8px;height:6px;overflow:hidden">
             <div id="progress-bar" style="background:var(--bleu);height:100%;width:0%;transition:width 0.3s"></div>
@@ -1857,28 +1927,190 @@ async function renderPhotos() {
         </div>
       </div>` : ''}
 
-      <div class="section-title">Album Petit Cosquet (${photos.length} photos)</div>
-
       ${photos.length > 0 ? `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:16px">
-        ${photos.map(p => `
-          <div style="position:relative;aspect-ratio:1;cursor:pointer" onclick="openPhoto('${p.url}','${p.auteur||''}','${p.legende||''}','${p.date_prise||''}')">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+        ${photos.map((p,i) => `
+          <div style="position:relative;aspect-ratio:1;cursor:pointer" onclick="openPhoto('${p.url}','${p.auteur||''}','${p.legende||''}','${p.date_prise||''}',${i})">
             <img src="${p.thumbnail_url||p.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px" loading="lazy">
             ${p.auteur===currentUser.prenom||currentUser.role==='Admin'?`
             <button onclick="event.stopPropagation();deletePhoto('${p.id}','${p.public_id}')" 
-              style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+              style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:10px;cursor:pointer">✕</button>
             `:''}
           </div>`).join('')}
       </div>` : `
       <div class="empty-state">
         <div class="empty-icon">📷</div>
-        <div class="empty-text">Aucune photo pour l'instant<br><small>Soyez les premiers à partager !</small></div>
+        <div class="empty-text">Aucune photo dans cet album</div>
       </div>`}
     `;
-  } catch(e) {
-    console.error(e);
-    document.getElementById('content').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Erreur chargement photos</div></div>';
+  } catch(e) { console.error(e); }
+}
+
+function lancerDiaporama() {
+  if (diaporamaPhotos.length === 0) return;
+  diaporamaIndex = 0;
+
+  // Créer overlay diaporama
+  const overlay = document.createElement('div');
+  overlay.id = 'diaporama-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:black;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center';
+
+  overlay.innerHTML = `
+    <div style="position:absolute;top:16px;right:16px;display:flex;gap:8px;z-index:10">
+      <button id="diapo-pause" onclick="toggleDiaporama()" style="background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer">⏸ Pause</button>
+      <button onclick="fermerDiaporama()" style="background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer">✕ Fermer</button>
+    </div>
+    <button onclick="diapoNav(-1)" style="position:absolute;left:10px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer">‹</button>
+    <img id="diapo-img" src="${diaporamaPhotos[0].url}" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px;transition:opacity 0.5s">
+    <button onclick="diapoNav(1)" style="position:absolute;right:10px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer">›</button>
+    <div style="position:absolute;bottom:20px;text-align:center;color:white">
+      <div id="diapo-counter" style="font-size:13px;opacity:0.7">1 / ${diaporamaPhotos.length}</div>
+      <div id="diapo-legende" style="font-size:14px;margin-top:4px">${diaporamaPhotos[0].legende||''}</div>
+      ${musiques.length > 0 ? `
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;justify-content:center">
+        <span style="font-size:11px;opacity:0.7">🎵</span>
+        <button onclick="musiquePrecedente()" style="background:rgba(255,255,255,0.2);color:white;border:none;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer">⏮</button>
+        <span id="diapo-musique-titre" style="font-size:11px;opacity:0.7;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button onclick="musiqueSuivante()" style="background:rgba(255,255,255,0.2);color:white;border:none;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer">⏭</button>
+      </div>` : ''}
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Lancer musique
+  if (musiques.length > 0) {
+    currentMusiqueIndex = 0;
+    lancerMusiqueDiaporama();
   }
+
+  // Lancer défilement auto
+  diaporamaInterval = setInterval(() => diapoNav(1), 5000);
+}
+
+function diapoNav(dir) {
+  diaporamaIndex = (diaporamaIndex + dir + diaporamaPhotos.length) % diaporamaPhotos.length;
+  const img = document.getElementById('diapo-img');
+  const counter = document.getElementById('diapo-counter');
+  const legende = document.getElementById('diapo-legende');
+  if (img) {
+    img.style.opacity = '0';
+    setTimeout(() => {
+      img.src = diaporamaPhotos[diaporamaIndex].url;
+      img.style.opacity = '1';
+      if (counter) counter.textContent = `${diaporamaIndex+1} / ${diaporamaPhotos.length}`;
+      if (legende) legende.textContent = diaporamaPhotos[diaporamaIndex].legende || '';
+    }, 300);
+  }
+}
+
+function toggleDiaporama() {
+  const btn = document.getElementById('diapo-pause');
+  if (diaporamaInterval) {
+    clearInterval(diaporamaInterval);
+    diaporamaInterval = null;
+    if (btn) btn.textContent = '▶ Play';
+  } else {
+    diaporamaInterval = setInterval(() => diapoNav(1), 5000);
+    if (btn) btn.textContent = '⏸ Pause';
+  }
+}
+
+function lancerMusiqueDiaporama() {
+  if (diaporamaAudio) { diaporamaAudio.pause(); diaporamaAudio = null; }
+  if (musiques.length === 0) return;
+  const m = musiques[currentMusiqueIndex];
+  diaporamaAudio = new Audio(m.url);
+  diaporamaAudio.volume = 0.6;
+  diaporamaAudio.play().catch(e => console.log('Audio:', e));
+  diaporamaAudio.onended = () => musiqueSuivante();
+  const titre = document.getElementById('diapo-musique-titre');
+  if (titre) titre.textContent = m.titre;
+}
+
+function musiqueSuivante() {
+  currentMusiqueIndex = (currentMusiqueIndex + 1) % musiques.length;
+  lancerMusiqueDiaporama();
+}
+
+function musiquePrecedente() {
+  currentMusiqueIndex = (currentMusiqueIndex - 1 + musiques.length) % musiques.length;
+  lancerMusiqueDiaporama();
+}
+
+function fermerDiaporama() {
+  if (diaporamaInterval) { clearInterval(diaporamaInterval); diaporamaInterval = null; }
+  if (diaporamaAudio) { diaporamaAudio.pause(); diaporamaAudio = null; }
+  const overlay = document.getElementById('diaporama-overlay');
+  if (overlay) overlay.remove();
+}
+
+let albumsCache = [];
+
+async function ouvrirAlbumById(id) {
+  const album = albumsCache.find(a => a.id === id);
+  if (album) ouvrirAlbum(id, album.nom);
+}
+
+async function renommerAlbumById(id) {
+  const album = albumsCache.find(a => a.id === id);
+  if (album) renommerAlbum(id, album.nom);
+}
+
+async function creerAlbum() {
+  const nom = prompt('Nom de l'album :');
+  if (!nom) return;
+  const annee = new Date().getFullYear();
+  await api('pc_albums','POST',{nom, annee, created_by: currentUser.prenom},'',false);
+  setTimeout(() => renderPhotos(), 600);
+}
+
+async function renommerAlbum(id, nomActuel) {
+  const nom = prompt('Nouveau nom :', nomActuel);
+  if (!nom || nom === nomActuel) return;
+  await api('pc_albums','PATCH',{nom},`?id=eq.${id}`);
+  setTimeout(() => renderPhotos(), 600);
+}
+
+async function supprimerAlbum(id) {
+  if (!confirm('Supprimer cet album ? Les photos seront conservées.')) return;
+  await api('pc_albums','DELETE',null,`?id=eq.${id}`);
+  setTimeout(() => renderPhotos(), 600);
+}
+
+async function ajouterMusique() {
+  const modal = document.getElementById('modal-resa');
+  document.getElementById('modal-resa-title').textContent = '🎵 Ajouter une musique';
+  document.getElementById('modal-resa-body').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Titre</label>
+      <input type="text" class="form-input" id="musique-titre" placeholder="ex: Le Petit Cosquet">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Lien URL (MP3 GitHub ou autre)</label>
+      <input type="text" class="form-input" id="musique-url" placeholder="https://...">
+      <div style="font-size:11px;color:var(--gris-mid);margin-top:4px">
+        💡 Uploadez votre MP3 sur GitHub et copiez le lien ici
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveMusique()">💾 Ajouter</button>
+  `;
+  modal.classList.add('open');
+}
+
+async function saveMusique() {
+  const titre = document.getElementById('musique-titre').value;
+  const url = document.getElementById('musique-url').value;
+  if (!titre || !url) { alert('Titre et URL obligatoires'); return; }
+  await api('pc_musiques','POST',{titre, url},'',false);
+  closeModal('modal-resa');
+  setTimeout(() => renderPhotos(), 600);
+}
+
+async function supprimerMusique(id) {
+  if (!confirm('Supprimer cette musique ?')) return;
+  await api('pc_musiques','DELETE',null,`?id=eq.${id}`);
+  setTimeout(() => renderPhotos(), 600);
 }
 
 async function uploadPhotos(input) {
@@ -1915,7 +2147,8 @@ async function uploadPhotos(input) {
           public_id: data.public_id,
           auteur: currentUser.prenom,
           legende: '',
-          date_prise: new Date().toISOString().split('T')[0]
+          date_prise: new Date().toISOString().split('T')[0],
+          album_id: currentAlbumId || null
         }, '', false);
       }
     } catch(e) {
@@ -1934,26 +2167,41 @@ async function uploadPhotos(input) {
   input.value = '';
 }
 
-function openPhoto(url, auteur, legende, date) {
-  // Créer un overlay plein écran
+function openPhoto(url, auteur, legende, date, index) {
+  diaporamaIndex = index || 0;
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer';
-  overlay.onclick = () => overlay.remove();
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center';
   overlay.innerHTML = `
-    <img src="${url}" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px">
+    <button onclick="this.closest('div').remove()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;padding:8px 14px;cursor:pointer">✕</button>
+    ${diaporamaPhotos.length > 1 ? `
+    <button onclick="navPhoto(-1,this)" style="position:absolute;left:10px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer">‹</button>
+    <button onclick="navPhoto(1,this)" style="position:absolute;right:10px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer">›</button>
+    ` : ''}
+    <img id="single-photo-img" src="${url}" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px">
     <div style="color:white;text-align:center;margin-top:12px;padding:0 20px">
       ${legende ? `<div style="font-size:15px;font-weight:600">${legende}</div>` : ''}
       <div style="font-size:12px;opacity:0.7;margin-top:4px">${auteur ? '📷 '+auteur : ''} ${date ? '· '+date : ''}</div>
       <div style="font-size:11px;opacity:0.5;margin-top:8px">Appuyer pour fermer</div>
     </div>
   `;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);
+}
+
+function navPhoto(dir, btn) {
+  if (!diaporamaPhotos.length) return;
+  diaporamaIndex = (diaporamaIndex + dir + diaporamaPhotos.length) % diaporamaPhotos.length;
+  const img = document.getElementById('single-photo-img');
+  if (img) img.src = diaporamaPhotos[diaporamaIndex].url;
 }
 
 async function deletePhoto(id, publicId) {
   if (!confirm('Supprimer cette photo ?')) return;
   await api('pc_photos','DELETE',null,`?id=eq.${id}`);
-  renderPhotos();
+  setTimeout(() => {
+    if (currentAlbumId) ouvrirAlbum(currentAlbumId, '');
+    else renderPhotos();
+  }, 600);
 }
 
 // ── CUISINE ──
