@@ -867,7 +867,7 @@ async function renderAccueil() {
   try {
     planning = await api('pc_planning', 'GET', null, '?order=date_arrivee');
     const today = new Date().toISOString().split('T')[0];
-    const presentsAujourdhui = planning.filter(r => r.date_arrivee <= today && r.date_depart >= today);
+    const presentsAujourdhui = planning.filter(r => r.date_arrivee <= today && r.date_depart >= today && r.statut === 'validé');
     const prochainesResas = planning.filter(r => r.date_arrivee > today).slice(0, 3);
     const nbPersonnesPresentes = presentsAujourdhui.reduce((s,r) => s + (parseInt(r.nombre_personnes)||1), 0);
 
@@ -1299,8 +1299,8 @@ async function renderRepas() {
         ? parts.map(p => ({prenom: p.prenom, famille: r.famille, type: p.type}))
         : [{prenom: r.prenom, famille: r.famille, type: 'membre'}];
 
-      let d = new Date(r.date_arrivee + 'T00:00:00');
-      const fin = new Date(r.date_depart + 'T00:00:00');
+      let d = new Date(r.date_arrivee + 'T12:00:00');
+      const fin = new Date(r.date_depart + 'T12:00:00');
       while (d <= fin) {
         const ds = d.toISOString().split('T')[0];
         if (!presencesParJour[ds]) presencesParJour[ds] = [];
@@ -1797,8 +1797,8 @@ async function renderCuisine() {
       const personnes = parts.length > 0
         ? parts.map(p => p.prenom)
         : [r.prenom];
-      let d = new Date(r.date_arrivee + 'T00:00:00');
-      const fin = new Date(r.date_depart + 'T00:00:00');
+      let d = new Date(r.date_arrivee + 'T12:00:00');
+      const fin = new Date(r.date_depart + 'T12:00:00');
       while (d <= fin) {
         const ds = d.toISOString().split('T')[0];
         if (!presencesParJour[ds]) presencesParJour[ds] = new Set();
