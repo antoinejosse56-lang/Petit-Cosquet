@@ -2058,7 +2058,7 @@ async function renommerAlbumById(id) {
 }
 
 async function creerAlbum() {
-  const nom = prompt('Nom de l'album :');
+  const nom = prompt("Nom de l'album :");
   if (!nom) return;
   const annee = new Date().getFullYear();
   await api('pc_albums','POST',{nom, annee, created_by: currentUser.prenom},'',false);
