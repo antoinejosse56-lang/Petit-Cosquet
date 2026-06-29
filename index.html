@@ -731,6 +731,8 @@
 const SUPABASE_URL = 'https://jbiphusmneoccarwkucq.supabase.co';
 const CLOUDINARY_CLOUD = 'dppgh2t7f';
 const VAPID_PUBLIC_KEY = 'BH7_8QOPSRvnI6yL-IRQZWhZQDdhjJExRkQsWzVVr6mMeKhrj4FqdoBtuXpKzTIa_pswLIexjEOOcB-6LdotxvY';
+const BREVO_KEY = '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';
+const BREVO_SENDER = { name: 'Petit Cosquet', email: 'petitcosquetansquer@gmail.com' };
 const CLOUDINARY_PRESET = 'petit-cosquet';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiaXBodXNtbmVvY2NhcndrdWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3MTI3ODIsImV4cCI6MjA4OTI4ODc4Mn0.meNA4EocaV5J8_9RL929w3fUOwFI5exFHnXr2nKRHjM';
 const MAISON_IMG = document.getElementById('maison-img-data').src;
@@ -1323,28 +1325,57 @@ async function saveResa(id) {
 
 async function notifierReferent(famille, titre, corps) {
   try {
-    // Trouver les abonnements des référents de cette famille
-    const referents = membres.filter(m => m.role === 'Propriétaire' && m.famille === famille);
+    // Trouver les référents de cette famille avec un email
+    const referents = membres.filter(m => m.role === 'Propriétaire' && m.famille === famille && m.email);
     for (const ref of referents) {
-      const subs = await api('pc_push_subscriptions', 'GET', null, `?membre=eq.${ref.prenom}`);
-      if (subs && subs.length > 0) {
-        // Appeler une Edge Function Supabase pour envoyer la notification
-        await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_KEY}`
-          },
-          body: JSON.stringify({
-            subscription: subs[0].subscription,
-            title: titre,
-            body: corps
-          })
-        });
-      }
+      await envoyerEmailBrevo(
+        ref.email, ref.prenom,
+        titre,
+        `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
+          <div style="background:#2E6FD9;padding:20px;border-radius:12px 12px 0 0;text-align:center">
+            <h1 style="color:white;margin:0;font-size:22px">🏠 Petit Cosquet</h1>
+            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0">Belle-Île-en-Mer</p>
+          </div>
+          <div style="background:white;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px">
+            <h2 style="color:#2E6FD9;margin:0 0 12px">${titre}</h2>
+            <p style="color:#444;font-size:15px;line-height:1.5">${corps}</p>
+            <div style="margin-top:20px;padding:12px;background:#f5f5f5;border-radius:8px;font-size:13px;color:#666">
+              Connectez-vous à l'application pour valider ou refuser cette demande.
+            </div>
+            <div style="text-align:center;margin-top:20px">
+              <a href="https://antoinejosse56-lang.github.io/Petit-Cosquet/" 
+                style="background:#2E6FD9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+                Ouvrir l'application
+              </a>
+            </div>
+          </div>
+          <p style="text-align:center;color:#aaa;font-size:11px;margin-top:12px">Petit Cosquet · Belle-Île-en-Mer</p>
+        </div>`
+      );
     }
   } catch(e) {
     console.error('Notification error:', e);
+  }
+}
+
+async function envoyerEmailBrevo(toEmail, toName, subject, htmlContent) {
+  try {
+    await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: BREVO_SENDER,
+        to: [{ email: toEmail, name: toName }],
+        subject: subject,
+        htmlContent: htmlContent
+      })
+    });
+    console.log('Email envoyé à', toEmail);
+  } catch(e) {
+    console.error('Erreur email:', e);
   }
 }
 
@@ -1357,6 +1388,32 @@ async function deleteResa(id) {
 
 async function validerResa(id) {
   await api('pc_planning', 'PATCH', {statut: 'validé'}, `?id=eq.${id}`);
+  // Notifier le demandeur
+  const resa = planning.find(r => r.id === id);
+  if (resa) {
+    const demandeur = membres.find(m => m.prenom === resa.prenom && m.email);
+    if (demandeur) {
+      await envoyerEmailBrevo(demandeur.email, demandeur.prenom,
+        '✅ Votre réservation au Petit Cosquet a été validée !',
+        `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
+          <div style="background:#2E6FD9;padding:20px;border-radius:12px 12px 0 0;text-align:center">
+            <h1 style="color:white;margin:0;font-size:22px">🏠 Petit Cosquet</h1>
+          </div>
+          <div style="background:white;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px">
+            <h2 style="color:#4caf7d">✅ Réservation validée !</h2>
+            <p style="color:#444">Votre réservation du <strong>${formatDate(resa.date_arrivee)}</strong> au <strong>${formatDate(resa.date_depart)}</strong> a été validée.</p>
+            <p style="color:#444">À bientôt à Belle-Île ! 🌊</p>
+            <div style="text-align:center;margin-top:20px">
+              <a href="https://antoinejosse56-lang.github.io/Petit-Cosquet/" 
+                style="background:#2E6FD9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+                Voir le planning
+              </a>
+            </div>
+          </div>
+        </div>`
+      );
+    }
+  }
   setTimeout(async () => {
     planning = await api('pc_planning', 'GET', null, '?order=date_arrivee');
     renderCalendar();
@@ -1366,6 +1423,32 @@ async function validerResa(id) {
 async function refuserResa(id) {
   if (!confirm('Refuser cette demande ?')) return;
   await api('pc_planning', 'PATCH', {statut: 'refusé'}, `?id=eq.${id}`);
+  // Notifier le demandeur
+  const resa = planning.find(r => r.id === id);
+  if (resa) {
+    const demandeur = membres.find(m => m.prenom === resa.prenom && m.email);
+    if (demandeur) {
+      await envoyerEmailBrevo(demandeur.email, demandeur.prenom,
+        '❌ Votre demande de réservation au Petit Cosquet',
+        `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
+          <div style="background:#2E6FD9;padding:20px;border-radius:12px 12px 0 0;text-align:center">
+            <h1 style="color:white;margin:0;font-size:22px">🏠 Petit Cosquet</h1>
+          </div>
+          <div style="background:white;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px">
+            <h2 style="color:#e07b39">❌ Demande non retenue</h2>
+            <p style="color:#444">Votre demande de réservation du <strong>${formatDate(resa.date_arrivee)}</strong> au <strong>${formatDate(resa.date_depart)}</strong> n'a pas pu être validée.</p>
+            <p style="color:#444">Contactez le référent de votre famille pour plus d'informations.</p>
+            <div style="text-align:center;margin-top:20px">
+              <a href="https://antoinejosse56-lang.github.io/Petit-Cosquet/" 
+                style="background:#2E6FD9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+                Ouvrir l'application
+              </a>
+            </div>
+          </div>
+        </div>`
+      );
+    }
+  }
   setTimeout(async () => {
     planning = await api('pc_planning', 'GET', null, '?order=date_arrivee');
     renderCalendar();
